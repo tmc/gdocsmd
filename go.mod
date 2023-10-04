@@ -1,4 +1,4 @@
-module gdocsmd
+module github.comt/tmc/gdocsmd
 
 go 1.20
 
