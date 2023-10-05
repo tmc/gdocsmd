@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/ghodss/yaml v1.0.0
+	github.com/google/go-cmp v0.5.9
 	github.com/yuin/goldmark v1.5.4
 	golang.org/x/oauth2 v0.8.0
 	google.golang.org/api v0.124.0

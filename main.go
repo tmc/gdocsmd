@@ -28,6 +28,9 @@ type App struct {
 }
 
 func (a *App) Run(ctx context.Context, opts Options) error {
+	if opts.GoogleDocID == "" {
+		return fmt.Errorf("missing google doc id")
+	}
 	doc, err := a.Client.Documents.Get(opts.GoogleDocID).Do()
 	if err != nil {
 		return fmt.Errorf("unable to retrieve data from document: %w", err)
@@ -47,7 +50,13 @@ func (a *App) Run(ctx context.Context, opts Options) error {
 		if err != nil {
 			return fmt.Errorf("unable to read md file: %w", err)
 		}
-		return convert.MarkdownToDoc(ctx, a.Client, doc, convert.NewMarkdownParser(), c)
+		return convert.MarkdownToDoc(
+			ctx,
+			&convert.RealDocumentService{a.Client},
+			convert.NewMarkdownParser(),
+			doc,
+			c,
+		)
 	default:
 		return fmt.Errorf("invalid direction: %s", opts.Direction)
 	}
@@ -60,13 +69,13 @@ func NewApp(ctx context.Context, opts Options) (*App, error) {
 		return nil, fmt.Errorf("unable to read client secret file: %w", err)
 	}
 
-	config, err := google.ConfigFromJSON(b, "https://www.googleapis.com/auth/documents")
+	config, err := google.ConfigFromJSON(b, docs.DocumentsScope)
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse client secret file to config: %w", err)
 	}
-	client := auth.GetClient(opts.TokenFile, config, auth.DefaultFileHandler{}, auth.DefaultInputReader{})
+	client := auth.GetClient(opts.TokenFile, config, auth.DefaultFileHandler{})
 
-	srv, err := docs.NewService(ctx, option.WithHTTPClient(client))
+	srv, err := docs.NewService(ctx, option.WithHTTPClient(client), option.WithScopes(docs.DocumentsScope))
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve Docs client: %w", err)
 	}
@@ -79,7 +88,7 @@ func main() {
 	flagMDFile := flag.String("md", "", "Markdown file")
 	flagTokenFile := flag.String("token", "token.json", "Token file")
 	flagDirection := flag.String("direction", "to-md", "Direction of conversion (to-md or to-doc)")
-	flagCredentials := flag.String("credentials", "credentials.json", "Credentials file")
+	flagCredentials := flag.String("credentials", "client-secret.json", "Credentials file")
 
 	flag.Parse()
 

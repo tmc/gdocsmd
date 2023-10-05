@@ -10,7 +10,15 @@ import (
 )
 
 type DocumentService interface {
-	BatchUpdate(string, *docs.BatchUpdateDocumentRequest) *docs.DocumentsBatchUpdateCall
+	DoBatchUpdate(string, *docs.BatchUpdateDocumentRequest) (*docs.BatchUpdateDocumentResponse, error)
+}
+
+type RealDocumentService struct {
+	*docs.Service
+}
+
+func (r *RealDocumentService) DoBatchUpdate(documentId string, request *docs.BatchUpdateDocumentRequest) (*docs.BatchUpdateDocumentResponse, error) {
+	return r.Documents.BatchUpdate(documentId, request).Do()
 }
 
 type MarkdownParser interface {

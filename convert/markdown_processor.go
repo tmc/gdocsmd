@@ -4,21 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 	"google.golang.org/api/docs/v1"
 )
 
+var slowdown = true
+
 func MarkdownToDoc(ctx context.Context, docsService DocumentService, parser MarkdownParser, gdoc *docs.Document, mdContent []byte) error {
 	doc := parser.Parse(text.NewReader(mdContent))
 
 	updates := []*docs.Request{}
-
 	index := int64(1)
-
 	styleStart := int64(1)
 	printLastUpdate := func() {
+		return
 		j, _ := json.Marshal(updates[len(updates)-1])
 		fmt.Println(len(updates), string(j), index)
 	}
@@ -33,26 +35,28 @@ func MarkdownToDoc(ctx context.Context, docsService DocumentService, parser Mark
 			},
 		}
 		index += int64(len(text))
-
 		return update
 	}
 
 	performUpdate := func(update *docs.Request) error {
-		//time.Sleep(5 * time.Millisecond)
-		_, err := docsService.BatchUpdate(gdoc.DocumentId, &docs.BatchUpdateDocumentRequest{
+		fmt.Println("performing update", jmar(update))
+		time.Sleep(2000 * time.Millisecond)
+		_, err := docsService.DoBatchUpdate(gdoc.DocumentId, &docs.BatchUpdateDocumentRequest{
 			Requests: []*docs.Request{update},
-		}).Do()
+		})
+
 		if err != nil {
 			return fmt.Errorf("unable to perform update: %w", err)
 		}
 		return nil
 	}
-	_ = performUpdate
 	addUpdate := func(update *docs.Request) {
 		updates = append(updates, update)
 		printLastUpdate()
 	}
 	ast.Walk(doc, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		fmt.Println("node", node.Kind(), entering)
+		time.Sleep(150 * time.Millisecond)
 		switch n := node.(type) {
 		case *ast.Document:
 		case *ast.Heading:
@@ -70,7 +74,7 @@ func MarkdownToDoc(ctx context.Context, docsService DocumentService, parser Mark
 						},
 						Range: &docs.Range{
 							StartIndex: styleStart,
-							EndIndex:   index - 1,
+							EndIndex:   index - 2,
 						},
 						Fields: "namedStyleType",
 					},
@@ -96,7 +100,7 @@ func MarkdownToDoc(ctx context.Context, docsService DocumentService, parser Mark
 				})
 			}
 		case *ast.Text:
-			//fmt.Println("text", entering)
+			fmt.Println("text", entering)
 			if entering {
 				return ast.WalkContinue, nil
 			}
@@ -116,7 +120,7 @@ func MarkdownToDoc(ctx context.Context, docsService DocumentService, parser Mark
 		case *ast.List:
 			fmt.Println("list", entering)
 			if entering {
-				addUpdate(addText("\n"))
+				//addUpdate(addText("\n"))
 				styleStart = index
 			} else {
 				addUpdate(&docs.Request{
@@ -153,56 +157,38 @@ func MarkdownToDoc(ctx context.Context, docsService DocumentService, parser Mark
 					Fields: "link",
 				},
 			})
+		case *ast.TextBlock:
+			fmt.Println("text block", entering)
+			if entering {
+				return ast.WalkContinue, nil
+			}
 		default:
 			fmt.Printf("unknown: %s\n", n.Kind())
 		}
 		return ast.WalkContinue, nil
 	})
 
-	// add title:
-	// updates = append(updates, &docs.Request{
-	// 	InsertText: &docs.InsertTextRequest{
-	// 		Text: doc.Title,
-	// 		Location: &docs.Location{
-	// 			Index: 1,
-	// 		},
-	// 	},
-	// })
-
-	// // todo: use markdown parser
-	// for i, p := range nonEmptyParagraphs[:50] {
-	// 	updates = append(updates, &docs.Request{
-	// 		InsertText: &docs.InsertTextRequest{
-	// 			Text: p + "\n\n",
-	// 			Location: &docs.Location{
-	// 				Index: index,
-	// 			},
-	// 		},
-	// 	})
-	// 	// increment by number of utf16 code units:
-	// 	index += int64(len([]rune(p)))
-	// }
-
-	// // send batch update request
-
-	// apply each step with a delay in-between:
-	/*
-		for i, u := range updates {
-			j, _ := json.Marshal(updates[len(updates)-1])
-			fmt.Println(i, len(updates), string(j))
-			_, err := srv.Documents.BatchUpdate(gdoc.DocumentId, &docs.BatchUpdateDocumentRequest{
-				Requests: []*docs.Request{u},
-			}).Do()
-			if err != nil {
-				return fmt.Errorf("unable to batch update: %w", err)
+	if slowdown {
+		for _, update := range updates {
+			if err := performUpdate(update); err != nil {
+				return err
 			}
 		}
-	*/
+	} else {
+		resp, err := docsService.DoBatchUpdate(gdoc.DocumentId, &docs.BatchUpdateDocumentRequest{
+			Requests: updates,
+		})
+		if err != nil {
+			return fmt.Errorf("Batch update failed: %w", err)
+		}
+		if resp.HTTPStatusCode != 200 {
+			return fmt.Errorf("Batch update failed: %d - %v", resp.HTTPStatusCode, resp)
+		}
+	}
+	return nil
+}
 
-	resp, err := docsService.BatchUpdate(gdoc.DocumentId, &docs.BatchUpdateDocumentRequest{
-		Requests: updates,
-	}).Do()
-	fmt.Println(resp)
-
-	return err
+func jmar(v interface{}) string {
+	j, _ := json.MarshalIndent(v, "", "  ")
+	return string(j)
 }

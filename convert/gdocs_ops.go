@@ -30,11 +30,13 @@ func NewMarkdownConverter() *MarkdownConverter {
 func (mc *MarkdownConverter) AsMarkdown(doc *docs.Document) ([]byte, error) {
 	var md []string
 	md = append(md, fmt.Sprintf("# %s", doc.Title))
-	for _, s := range doc.Body.Content {
-		if s.Paragraph != nil {
-			md = append(md, mc.paragraphAsMarkdown(s.Paragraph)...)
-		} else if s.Table != nil {
-			md = append(md, mc.tableAsMarkdown(s.Table)...)
+	if doc.Body != nil {
+		for _, s := range doc.Body.Content {
+			if s.Paragraph != nil {
+				md = append(md, mc.paragraphAsMarkdown(s.Paragraph)...)
+			} else if s.Table != nil {
+				md = append(md, mc.tableAsMarkdown(s.Table)...)
+			}
 		}
 	}
 	return []byte(strings.Join(md, "\n")), nil
